@@ -13,7 +13,33 @@ function getGenAI() {
   return genAI;
 }
 
+const ERROR_MESSAGES: Record<string, any> = {
+  'Indonesian': {
+    apiKey: "API Key Belum Dipasang!",
+    general: "Ada gangguan pada matriks penerjemahan...",
+    emotional: "Saya sedang ngemil atau baterai saya lemah. Coba lagi nanti!",
+  },
+  'English': {
+    apiKey: "API Key Missing!",
+    general: "Something went wrong in the translation matrix...",
+    emotional: "I'm currently having a snack or my batteries are low. Try again later!",
+  },
+  'Chinese (Simplified)': {
+    apiKey: "缺少 API 密钥！",
+    general: "翻译矩阵出现问题...",
+    emotional: "我正在吃零食或电池电量不足。请稍后再试！",
+  },
+  'Chinese (Traditional)': {
+    apiKey: "缺少 API 金鑰！",
+    general: "翻譯矩陣出現問題...",
+    emotional: "我正在吃零食或電池電量不足。請稍後再試！",
+  }
+};
+
 export async function translateAnimalSound(animal: string, sound: string, targetLanguage: string = 'English') {
+  const langKey = ERROR_MESSAGES[targetLanguage] ? targetLanguage : 'English';
+  const msgs = ERROR_MESSAGES[langKey];
+
   try {
     const ai = getGenAI();
     
@@ -32,7 +58,7 @@ export async function translateAnimalSound(animal: string, sound: string, target
         "mood": "string" // e.g., HUNGRY, HAPPY, ANNOYED, ADVENTUROUS
       }`;
 
-    const response = await ai.models.generateContent({
+    const response = await (ai as any).models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
@@ -42,14 +68,21 @@ export async function translateAnimalSound(animal: string, sound: string, target
 
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
-    return JSON.parse(text);
+    
+    // Clean potential markdown code blocks
+    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanText);
   } catch (error) {
     console.error("Gemini Error:", error);
+    const errorStr = error instanceof Error ? error.message : String(error);
+    const isApiKeyError = errorStr.includes("GEMINI_API_KEY") || 
+                         errorStr.includes("API_KEY") ||
+                         errorStr.includes("403") ||
+                         errorStr.includes("unauthorized");
+
     return {
-      literal: error instanceof Error && error.message.includes("GEMINI_API_KEY") 
-        ? "API Key Missing!" 
-        : "Something went wrong in the translation matrix...",
-      emotional: "I'm currently having a snack or my batteries are low. Try again later!",
+      literal: isApiKeyError ? msgs.apiKey : msgs.general,
+      emotional: msgs.emotional,
       mood: "SLEEPY"
     };
   }
