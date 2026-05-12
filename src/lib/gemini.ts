@@ -1,18 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
-
-let genAI: any = null;
-
-function getGenAI() {
-  if (!genAI) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not set.");
-    }
-    genAI = new GoogleGenAI({ apiKey: apiKey });
-  }
-  return genAI;
-}
-
 const ERROR_MESSAGES: Record<string, any> = {
   'Indonesian': {
     apiKey: "API Key Belum Dipasang!",
@@ -81,44 +66,24 @@ export async function translateAnimalSound(animal: string, sound: string, target
   const msgs = ERROR_MESSAGES[langKey];
 
   try {
-    const ai = getGenAI();
-    
-    const prompt = `You are a professional animal behaviorist and a hilarious translator. 
-      Translate the following ${animal} sound/behavior into the ${targetLanguage} language: "${sound}".
-      
-      Make it funny, creative, and relatable. 
-      The entire response (literal and emotional) MUST be in ${targetLanguage}.
-      
-      Give a short "Literal Translation" and a more detailed "Emotional Context".
-      
-      Return the response in JSON format:
-      {
-        "literal": "string",
-        "emotional": "string",
-        "mood": "string" // e.g., HUNGRY, HAPPY, ANNOYED, ADVENTUROUS
-      }`;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      },
+    const response = await fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ animal, sound, targetLanguage })
     });
 
-    const text = response.text;
-    if (!text) throw new Error("Empty response from AI");
-    
-    // Clean potential markdown code blocks
-    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(cleanText);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'SERVER_ERROR');
+    }
+
+    return await response.json();
   } catch (error) {
-    console.error("Gemini Error:", error);
+    console.error("Translation Error:", error);
     const errorStr = error instanceof Error ? error.message : String(error);
-    const isApiKeyError = errorStr.includes("GEMINI_API_KEY") || 
+    const isApiKeyError = errorStr === 'API_KEY_ERROR' || 
                          errorStr.includes("API_KEY") ||
-                         errorStr.includes("403") ||
-                         errorStr.includes("authorized");
+                         errorStr.includes("401");
 
     return {
       literal: isApiKeyError ? msgs.apiKey : (msgs.general + " (" + errorStr.substring(0, 50) + "...)"),
