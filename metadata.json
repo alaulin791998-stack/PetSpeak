@@ -1,0 +1,9 @@
+{
+  "name": "PetSpeak AI",
+  "description": "An AI-powered animal language translator that turns your pet's sounds and behaviors into fun, human-readable messages.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
