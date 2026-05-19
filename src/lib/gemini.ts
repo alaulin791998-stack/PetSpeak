@@ -86,8 +86,8 @@ export async function translateAnimalSound(animal: string, sound: string, target
                          errorStr.includes("401");
 
     return {
-      literal: isApiKeyError ? msgs.apiKey : (msgs.general + " (" + errorStr.substring(0, 50) + "...)"),
-      emotional: msgs.emotional,
+      literal: isApiKeyError ? msgs.apiKey : msgs.general,
+      emotional: isApiKeyError ? msgs.emotional : (errorStr.includes('Failed to fetch') ? "Maaf, sepertinya server sedang offline." : errorStr),
       mood: "SLEEPY"
     };
   }

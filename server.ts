@@ -2,7 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -16,46 +16,56 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Gemini Setup
+  const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+
   // API Routes
   app.post("/api/translate", async (req, res) => {
     try {
       const { animal, sound, targetLanguage } = req.body;
       
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
+      if (!process.env.GEMINI_API_KEY) {
         return res.status(401).json({ 
           error: "API_KEY_ERROR", 
           message: "GEMINI_API_KEY is not set on the server." 
         });
       }
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      
       const prompt = `You are a professional animal behaviorist and a hilarious translator. 
       TASK: Translate the following ${animal} sound/behavior: "${sound}" into the ${targetLanguage} language.
       
-      CRITICAL INSTRUCTIONS:
-      1. Every single value in the JSON response (literal, emotional, AND mood) MUST be written in ${targetLanguage}.
-      2. If the language is Indonesian, do not use English words.
-      3. Make the translation funny, creative, and relatable to pet owners.
-      4. The "literal" field should be a short, direct translation of the intent.
-      5. The "emotional" field should be a funny, dramatic explanation of the pet's inner thoughts.
-      6. The "mood" field should be 1-3 words describing the pet's state.
-      
-      OUTPUT FORMAT (JSON ONLY):
-      {
-        "literal": "terjemahan pendek dalam ${targetLanguage}",
-        "emotional": "penjelasan lucu panjang dalam ${targetLanguage}",
-        "mood": "mood singkat dalam ${targetLanguage}"
-      }`;
+      Make the translation funny, creative, and relatable to pet owners. 
+      The entire response MUST be in ${targetLanguage}.`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      let text = response.text();
-      
-      // Basic JSON cleaning if AI returns markdown
-      text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          systemInstruction: `You are a professional animal behaviorist. 
+          Return a JSON object with literal translation, funny emotional context, and a short mood.
+          The entire response MUST be in ${targetLanguage}.`,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              literal: { type: Type.STRING, description: "Short direct translation" },
+              emotional: { type: Type.STRING, description: "Funny detailed background thoughts" },
+              mood: { type: Type.STRING, description: "1-2 words pet mood" }
+            },
+            required: ["literal", "emotional", "mood"]
+          }
+        },
+      });
+
+      const text = response.text;
+      if (!text) throw new Error("Empty response from AI");
       
       res.json(JSON.parse(text));
     } catch (error) {
