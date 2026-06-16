@@ -72,12 +72,27 @@ export async function translateAnimalSound(animal: string, sound: string, target
       body: JSON.stringify({ animal, sound, targetLanguage })
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'SERVER_ERROR');
+    const rawText = await response.text();
+    let parsedData: any = null;
+    
+    try {
+      if (rawText) {
+        parsedData = JSON.parse(rawText);
+      }
+    } catch (parseErr) {
+      console.warn("Failed to parse response body as JSON. Raw body length:", rawText?.length, parseErr);
     }
 
-    return await response.json();
+    if (!response.ok) {
+      const serverErr = parsedData?.error || 'SERVER_ERROR';
+      throw new Error(serverErr);
+    }
+
+    if (!parsedData) {
+      throw new Error('EMPTY_OR_MALFORMED_RESPONSE');
+    }
+
+    return parsedData;
   } catch (error) {
     console.error("Translation Error:", error);
     const errorStr = error instanceof Error ? error.message : String(error);
@@ -87,7 +102,7 @@ export async function translateAnimalSound(animal: string, sound: string, target
 
     return {
       literal: isApiKeyError ? msgs.apiKey : msgs.general,
-      emotional: isApiKeyError ? msgs.emotional : (errorStr.includes('Failed to fetch') ? "Maaf, sepertinya server sedang offline." : errorStr),
+      emotional: isApiKeyError ? msgs.emotional : (errorStr.includes('Failed to fetch') ? "Maaf, sepertinya server sedang offline." : `Penerjemah sedang istirahat sejenak (${errorStr}). Silakan coba lagi.`),
       mood: "SLEEPY"
     };
   }

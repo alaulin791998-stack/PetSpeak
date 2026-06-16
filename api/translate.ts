@@ -1,37 +1,4 @@
-import express from "express";
-import { createServer as createViteServer } from "vite";
-import path from "path";
-import { fileURLToPath } from "url";
 import { GoogleGenAI, Type } from "@google/genai";
-import dotenv from "dotenv";
-
-dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-export const app = express();
-const PORT = 3000;
-
-app.use(express.json());
-
-let aiInstance: GoogleGenAI | null = null;
-function getAI() {
-  if (!aiInstance) {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not set on the server.");
-    }
-    aiInstance = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-  }
-  return aiInstance;
-}
 
 function cleanAndParseJSON(text: string, targetLanguage: string): { literal: string; emotional: string; mood: string } {
   const defaultFallback = {
@@ -90,11 +57,32 @@ function cleanAndParseJSON(text: string, targetLanguage: string): { literal: str
   }
 }
 
-// API Routes
-app.post("/api/translate", async (req, res) => {
+export default async function handler(req: any, res: any) {
+  // Allow only POST method
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).json({ error: "METHOD_NOT_ALLOWED", message: `Method ${req.method} Not Allowed` });
+  }
+
   try {
     const { animal, sound, targetLanguage } = req.body;
-    const ai = getAI();
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(401).json({ 
+        error: "API_KEY_ERROR", 
+        message: "GEMINI_API_KEY is not set on Vercel's environment variables." 
+      });
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey: apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
 
     const prompt = `You are a professional animal behaviorist and a hilarious translator. 
     TASK: Translate the following ${animal} sound/behavior: "${sound}" into the ${targetLanguage} language.
@@ -124,39 +112,12 @@ app.post("/api/translate", async (req, res) => {
 
     const text = response.text;
     const parsedData = cleanAndParseJSON(text || "", targetLanguage);
-    res.json(parsedData);
+    res.status(200).json(parsedData);
   } catch (error) {
-    console.error("Gemini Error:", error);
+    console.error("Gemini Vercel Error:", error);
     res.status(500).json({ 
       error: "GENERAL_ERROR", 
       message: error instanceof Error ? error.message : String(error) 
     });
   }
-});
-
-async function startServer() {
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
-  // Only start the listener if not in a serverless environment
-  if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
 }
-
-startServer();
-
